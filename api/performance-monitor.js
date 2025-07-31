@@ -1,8 +1,8 @@
 // api/performance-monitor.js
-const handleCors = require('../lib/cors');
-const supabase = require('../lib/supabase');
+import { handleCors } from '../lib/cors.js';
+import { supabase } from '../lib/supabase.js';
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   // Handle CORS
   if (handleCors(req, res)) return;
 
@@ -101,169 +101,191 @@ module.exports = async (req, res) => {
         version: '1.0'
       };
 
-      // Save to database
+      // Create metric record
+      const metricData = {
+        service,
+        metric_type,
+        value,
+        timestamp,
+        metadata: enhancedMetadata
+      };
+
       const { data, error } = await supabase
         .from('performance_metrics')
-        .insert([{ 
-          service, 
-          metric_type, 
-          value,
-          timestamp,
-          metadata: enhancedMetadata
-        }])
-        .select();
+        .insert(metricData)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      // Update real-time alerts if needed
+      // Check for performance alerts
       await checkPerformanceAlerts(service, metric_type, value);
+
+      return res.status(201).json({
+        status: 'success',
+        data,
+        message: 'Performance metric recorded successfully'
+      });
+    }
+    else if (req.method === 'DELETE') {
+      // Delete metrics (with optional filtering)
+      const { service, metric_type, start_date, end_date } = req.query;
+
+      let query = supabase.from('performance_metrics');
+
+      // Apply filters for deletion
+      if (service) {
+        query = query.eq('service', service);
+      }
+
+      if (metric_type) {
+        query = query.eq('metric_type', metric_type);
+      }
+
+      if (start_date) {
+        query = query.gte('timestamp', start_date);
+      }
+
+      if (end_date) {
+        query = query.lte('timestamp', end_date);
+      }
+
+      const { error } = await query.delete();
+
+      if (error) throw error;
 
       return res.status(200).json({
         status: 'success',
-        message: 'Performance metric recorded successfully',
-        data: {
-          id: data[0]?.id,
-          service,
-          metric_type,
-          value,
-          timestamp,
-          metadata: enhancedMetadata
-        }
+        message: 'Performance metrics deleted successfully'
       });
-    } 
+    }
     else {
       return res.status(405).json({
         status: 'error',
-        message: 'Method not allowed. Use GET or POST'
+        message: 'Method not allowed'
       });
     }
   } catch (error) {
     console.error('Performance Monitor Error:', error);
-
     return res.status(500).json({
       status: 'error',
-      message: error.message || 'An error occurred processing your request',
-      error_code: 'PERFORMANCE_MONITOR_ERROR'
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// Aggregate metrics by time period
+// Helper functions
 function aggregateMetrics(data, aggregation) {
   if (!data || data.length === 0) return [];
 
   const grouped = {};
-
+  
   data.forEach(metric => {
-    const date = new Date(metric.timestamp);
-    let groupKey;
-
+    const timestamp = new Date(metric.timestamp);
+    let key;
+    
     if (aggregation === 'hourly') {
-      groupKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+      key = `${timestamp.getFullYear()}-${String(timestamp.getMonth() + 1).padStart(2, '0')}-${String(timestamp.getDate()).padStart(2, '0')}T${String(timestamp.getHours()).padStart(2, '0')}:00:00`;
     } else if (aggregation === 'daily') {
-      groupKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      key = `${timestamp.getFullYear()}-${String(timestamp.getMonth() + 1).padStart(2, '0')}-${String(timestamp.getDate()).padStart(2, '0')}`;
     }
-
-    if (!grouped[groupKey]) {
-      grouped[groupKey] = {
-        timestamp: groupKey,
-        service: metric.service,
-        metric_type: metric.metric_type,
+    
+    if (!grouped[key]) {
+      grouped[key] = {
         values: [],
-        count: 0
+        count: 0,
+        sum: 0,
+        min: Infinity,
+        max: -Infinity
       };
     }
-
-    grouped[groupKey].values.push(metric.value);
-    grouped[groupKey].count++;
+    
+    grouped[key].values.push(metric.value);
+    grouped[key].count++;
+    grouped[key].sum += metric.value;
+    grouped[key].min = Math.min(grouped[key].min, metric.value);
+    grouped[key].max = Math.max(grouped[key].max, metric.value);
   });
 
-  // Calculate aggregated values
-  return Object.values(grouped).map(group => ({
-    ...group,
-    value: group.values.reduce((sum, val) => sum + val, 0) / group.values.length, // Average
-    min_value: Math.min(...group.values),
-    max_value: Math.max(...group.values),
-    sum_value: group.values.reduce((sum, val) => sum + val, 0)
+  return Object.entries(grouped).map(([timestamp, stats]) => ({
+    timestamp,
+    service: data[0].service,
+    metric_type: data[0].metric_type,
+    value: stats.sum / stats.count, // average
+    count: stats.count,
+    min: stats.min,
+    max: stats.max,
+    sum: stats.sum,
+    aggregation_type: aggregation
   }));
 }
 
-// Calculate summary statistics
 function calculateSummaryStats(data) {
   if (!data || data.length === 0) {
     return {
-      total_records: 0,
-      average_value: 0,
-      min_value: 0,
-      max_value: 0
+      count: 0,
+      average: 0,
+      min: 0,
+      max: 0,
+      total: 0
     };
   }
 
-  const values = data.map(d => d.value).filter(v => typeof v === 'number');
-
-  if (values.length === 0) {
-    return {
-      total_records: data.length,
-      average_value: 0,
-      min_value: 0,
-      max_value: 0
-    };
-  }
+  const values = data.map(d => d.value);
+  const sum = values.reduce((acc, val) => acc + val, 0);
+  const average = sum / values.length;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
 
   return {
-    total_records: data.length,
-    average_value: parseFloat((values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(2)),
-    min_value: Math.min(...values),
-    max_value: Math.max(...values),
-    latest_timestamp: data[0]?.timestamp,
-    oldest_timestamp: data[data.length - 1]?.timestamp
+    count: data.length,
+    average: parseFloat(average.toFixed(2)),
+    min: parseFloat(min.toFixed(2)),
+    max: parseFloat(max.toFixed(2)),
+    total: parseFloat(sum.toFixed(2))
   };
 }
 
-// Check for performance alerts
 async function checkPerformanceAlerts(service, metric_type, value) {
-  // Define alert thresholds
-  const thresholds = {
-    'response_time': { warning: 1000, critical: 3000 },
-    'cpu_usage': { warning: 70, critical: 90 },
-    'memory_usage': { warning: 80, critical: 95 },
-    'error_rate': { warning: 5, critical: 10 },
-    'throughput': { warning: 10, critical: 5 } // Lower is worse for throughput
-  };
+  try {
+    // Define alert thresholds
+    const thresholds = {
+      response_time: { warning: 1000, critical: 3000 },
+      cpu_usage: { warning: 70, critical: 90 },
+      memory_usage: { warning: 80, critical: 95 },
+      error_rate: { warning: 5, critical: 10 }
+    };
 
-  const threshold = thresholds[metric_type];
-  if (!threshold) return;
+    const threshold = thresholds[metric_type];
+    if (!threshold) return;
 
-  let alertLevel = null;
-
-  if (metric_type === 'throughput') {
-    // For throughput, lower values are worse
-    if (value <= threshold.critical) alertLevel = 'critical';
-    else if (value <= threshold.warning) alertLevel = 'warning';
-  } else {
-    // For other metrics, higher values are worse
-    if (value >= threshold.critical) alertLevel = 'critical';
-    else if (value >= threshold.warning) alertLevel = 'warning';
-  }
-
-  if (alertLevel) {
-    console.warn(`PERFORMANCE ALERT [${alertLevel.toUpperCase()}]: ${service} ${metric_type} = ${value}`);
-
-    // Here you could implement additional alerting logic:
-    // - Send notifications
-    // - Log to external monitoring systems
-    // - Trigger automated responses
-
-    try {
-      await supabase.from('system_logs').insert([{
-        level: alertLevel,
-        service,
-        message: `Performance alert: ${metric_type} = ${value}`,
-        metadata: { metric_type, value, threshold },
-        created_at: new Date().toISOString()
-      }]);
-    } catch (error) {
-      console.error('Error logging performance alert:', error);
+    let alert_level = null;
+    if (value >= threshold.critical) {
+      alert_level = 'critical';
+    } else if (value >= threshold.warning) {
+      alert_level = 'warning';
     }
+
+    if (alert_level) {
+      // Create alert record
+      const alertData = {
+        service,
+        metric_type,
+        value,
+        threshold: threshold[alert_level],
+        alert_level,
+        timestamp: new Date().toISOString(),
+        status: 'active'
+      };
+
+      await supabase
+        .from('performance_alerts')
+        .insert(alertData);
+
+      console.log(`Performance alert: ${alert_level} level for ${service} ${metric_type} = ${value}`);
+    }
+  } catch (error) {
+    console.error('Error checking performance alerts:', error);
   }
 }

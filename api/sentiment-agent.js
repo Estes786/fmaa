@@ -1,34 +1,56 @@
 // api/sentiment-agent.js
-const handleCors = require('../lib/cors');
-const supabase = require('../lib/supabase');
+import { handleCors } from '../lib/cors.js';
+import { supabase } from '../lib/supabase.js';
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   // Handle CORS
   if (handleCors(req, res)) return;
 
   try {
     // Handle based on HTTP method
     if (req.method === 'GET') {
-      // Get sentiment data with optional filtering
-      const { limit = 50, offset = 0, text_filter } = req.query;
+      // Get sentiment analysis results with filtering
+      const { 
+        source, 
+        sentiment_type, 
+        start_date, 
+        end_date, 
+        limit = 50, 
+        offset = 0 
+      } = req.query;
 
-      let query = supabase
-        .from('sentiment_analyses')
-        .select('*')
+      let query = supabase.from('sentiment_analysis').select('*');
+
+      // Apply filters
+      if (source) {
+        query = query.eq('source', source);
+      }
+
+      if (sentiment_type) {
+        query = query.eq('sentiment_type', sentiment_type);
+      }
+
+      if (start_date) {
+        query = query.gte('created_at', start_date);
+      }
+
+      if (end_date) {
+        query = query.lte('created_at', end_date);
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (text_filter) {
-        query = query.ilike('text', `%${text_filter}%`);
-      }
-
-      const { data, error } = await query;
-
       if (error) throw error;
+
+      // Calculate sentiment summary
+      const summary = calculateSentimentSummary(data);
 
       return res.status(200).json({
         status: 'success',
         data,
+        summary,
         pagination: {
           limit: parseInt(limit),
           offset: parseInt(offset),
@@ -37,132 +59,198 @@ module.exports = async (req, res) => {
       });
     } 
     else if (req.method === 'POST') {
-      // Validate request body
-      const { text } = req.body;
-      if (!text || text.trim().length === 0) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Text is required and cannot be empty'
-        });
-      }
+      // Analyze sentiment for new text
+      const { text, source, context = {} } = req.body;
 
-      if (text.length > 5000) {
+      if (!text) {
         return res.status(400).json({
           status: 'error',
-          message: 'Text cannot exceed 5000 characters'
+          message: 'Text is required for sentiment analysis'
         });
       }
 
       // Perform sentiment analysis
-      const sentiment = analyzeSentiment(text);
+      const analysis = await analyzeSentiment(text, context);
 
-      // Save to database
+      // Save analysis result
+      const analysisData = {
+        text: text.substring(0, 1000), // Limit text length
+        source: source || 'api',
+        sentiment_score: analysis.score,
+        sentiment_type: analysis.type,
+        confidence: analysis.confidence,
+        keywords: analysis.keywords,
+        context: context,
+        created_at: new Date().toISOString()
+      };
+
       const { data, error } = await supabase
-        .from('sentiment_analyses')
-        .insert([{ 
-          text, 
-          sentiment: sentiment.sentiment,
-          score: sentiment.score,
-          confidence: sentiment.confidence,
-          keywords: sentiment.keywords,
-          created_at: new Date().toISOString() 
-        }])
-        .select();
+        .from('sentiment_analysis')
+        .insert(analysisData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return res.status(201).json({
+        status: 'success',
+        data,
+        message: 'Sentiment analysis completed successfully'
+      });
+    }
+    else if (req.method === 'PUT') {
+      // Update sentiment analysis
+      const { id } = req.query;
+      const updateData = req.body;
+
+      if (!id) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Analysis ID is required'
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('sentiment_analysis')
+        .update({
+          ...updateData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
 
       if (error) throw error;
 
       return res.status(200).json({
         status: 'success',
-        data: {
-          id: data[0]?.id,
-          text,
-          sentiment: sentiment.sentiment,
-          score: sentiment.score,
-          confidence: sentiment.confidence,
-          keywords: sentiment.keywords,
-          analysis_time: new Date().toISOString()
-        }
+        data,
+        message: 'Sentiment analysis updated successfully'
       });
-    } 
+    }
+    else if (req.method === 'DELETE') {
+      // Delete sentiment analysis
+      const { id } = req.query;
+
+      if (!id) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Analysis ID is required'
+        });
+      }
+
+      const { error } = await supabase
+        .from('sentiment_analysis')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Sentiment analysis deleted successfully'
+      });
+    }
     else {
       return res.status(405).json({
         status: 'error',
-        message: 'Method not allowed. Use GET or POST'
+        message: 'Method not allowed'
       });
     }
   } catch (error) {
     console.error('Sentiment Agent Error:', error);
-
     return res.status(500).json({
       status: 'error',
-      message: error.message || 'An error occurred processing your request',
-      error_code: 'SENTIMENT_ANALYSIS_ERROR'
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// Enhanced sentiment analysis function
-function analyzeSentiment(text) {
-  const positiveWords = [
-    'good', 'great', 'excellent', 'amazing', 'awesome', 'fantastic', 'wonderful',
-    'happy', 'joy', 'love', 'best', 'perfect', 'outstanding', 'brilliant',
-    'superb', 'marvelous', 'incredible', 'terrific', 'fabulous', 'impressive'
-  ];
-
-  const negativeWords = [
-    'bad', 'worst', 'terrible', 'awful', 'horrible', 'disgusting', 'hate',
-    'sad', 'angry', 'frustrated', 'disappointed', 'poor', 'pathetic',
-    'useless', 'worthless', 'disaster', 'nightmare', 'ridiculous', 'annoying'
-  ];
-
-  const neutralWords = [
-    'okay', 'fine', 'normal', 'average', 'standard', 'typical', 'regular',
-    'moderate', 'acceptable', 'adequate'
-  ];
-
-  let score = 0;
-  let totalWords = 0;
-  const keywords = [];
+// Helper functions
+async function analyzeSentiment(text, context = {}) {
+  // This is a simplified sentiment analysis
+  // In a real implementation, you would use NLP libraries or AI services
+  
   const words = text.toLowerCase().split(/\s+/);
-
+  const positiveWords = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'love', 'like', 'happy', 'satisfied'];
+  const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'dislike', 'angry', 'sad', 'disappointed', 'poor'];
+  
+  let positiveCount = 0;
+  let negativeCount = 0;
+  
   words.forEach(word => {
-    // Remove punctuation
-    const cleanWord = word.replace(/[^\w]/g, '');
-    totalWords++;
-
-    if (positiveWords.includes(cleanWord)) {
-      score += 1;
-      keywords.push({ word: cleanWord, sentiment: 'positive' });
-    } else if (negativeWords.includes(cleanWord)) {
-      score -= 1;
-      keywords.push({ word: cleanWord, sentiment: 'negative' });
-    } else if (neutralWords.includes(cleanWord)) {
-      keywords.push({ word: cleanWord, sentiment: 'neutral' });
-    }
+    if (positiveWords.includes(word)) positiveCount++;
+    if (negativeWords.includes(word)) negativeCount++;
   });
-
-  // Normalize score
-  const normalizedScore = totalWords > 0 ? score / totalWords : 0;
-
-  // Determine sentiment
-  let sentiment;
-  let confidence;
-
-  if (normalizedScore > 0.1) {
-    sentiment = 'positive';
-    confidence = Math.min(normalizedScore * 100, 95);
-  } else if (normalizedScore < -0.1) {
-    sentiment = 'negative';
-    confidence = Math.min(Math.abs(normalizedScore) * 100, 95);
+  
+  const total = words.length;
+  const positiveRatio = positiveCount / total;
+  const negativeRatio = negativeCount / total;
+  
+  let score = 0;
+  let type = 'neutral';
+  let confidence = 0.5;
+  
+  if (positiveRatio > negativeRatio) {
+    score = positiveRatio;
+    type = 'positive';
+    confidence = Math.min(0.9, positiveRatio + 0.3);
+  } else if (negativeRatio > positiveRatio) {
+    score = negativeRatio;
+    type = 'negative';
+    confidence = Math.min(0.9, negativeRatio + 0.3);
   } else {
-    sentiment = 'neutral';
-    confidence = 60 + Math.random() * 20; // Random confidence for neutral
+    score = 0.5;
+    type = 'neutral';
+    confidence = 0.5;
+  }
+  
+  // Extract keywords (simplified)
+  const keywords = words
+    .filter(word => word.length > 3)
+    .slice(0, 5);
+  
+  return {
+    score: parseFloat(score.toFixed(3)),
+    type,
+    confidence: parseFloat(confidence.toFixed(3)),
+    keywords
+  };
+}
+
+function calculateSentimentSummary(analyses) {
+  if (!analyses || analyses.length === 0) {
+    return {
+      total: 0,
+      by_sentiment: {},
+      average_score: 0,
+      average_confidence: 0
+    };
   }
 
-  return {
-    score: parseFloat(normalizedScore.toFixed(3)),
-    sentiment,
-    confidence: parseFloat(confidence.toFixed(1)),
-    keywords: keywords.slice(0, 10) // Limit to top 10 keywords
+  const summary = {
+    total: analyses.length,
+    by_sentiment: {},
+    average_score: 0,
+    average_confidence: 0
   };
+
+  let totalScore = 0;
+  let totalConfidence = 0;
+
+  analyses.forEach(analysis => {
+    // Count by sentiment type
+    summary.by_sentiment[analysis.sentiment_type] = 
+      (summary.by_sentiment[analysis.sentiment_type] || 0) + 1;
+    
+    // Calculate averages
+    totalScore += analysis.sentiment_score || 0;
+    totalConfidence += analysis.confidence || 0;
+  });
+
+  summary.average_score = parseFloat((totalScore / analyses.length).toFixed(3));
+  summary.average_confidence = parseFloat((totalConfidence / analyses.length).toFixed(3));
+
+  return summary;
 }
