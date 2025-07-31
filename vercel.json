@@ -5,11 +5,6 @@
   "outputDirectory": "client/build",
   "installCommand": "npm install",
   "framework": null,
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs18.x"
-    }
-  },
   "routes": [
     {
       "src": "/api/(.*)",
