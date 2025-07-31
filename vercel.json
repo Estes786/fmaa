@@ -1,46 +1,17 @@
 {
   "version": 2,
-  "name": "fmaa-dashboard-complete",
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    },
-    { 
-      "src": "api/*.js", 
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 30
-      }
-    }
-  ],
+  "buildCommand": "npm run deploy",
+  "outputDirectory": "client/build",
+  "installCommand": "npm install",
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1",
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Accept, Authorization, X-API-Key",
-        "Access-Control-Allow-Credentials": "true",
-        "Cache-Control": "no-cache"
-      }
-    },
-    {
       "src": "/(.*)",
-      "dest": "/$1",
-      "headers": {
-        "X-Frame-Options": "DENY",
-        "X-Content-Type-Options": "nosniff",
-        "Referrer-Policy": "strict-origin-when-cross-origin"
-      }
+      "dest": "/index.html"
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "GENERATE_SOURCEMAP": "false"
   }
 }
 
