@@ -1,29 +1,28 @@
 {
-  "name": "fmaa-chat-implementation",
+  "name": "fmaa-chat-frontend",
   "version": "1.0.0",
-  "description": "Full Stack Chat with AI Agent Integration",
-  "main": "server.js",
+  "description": "FMAA Chat Frontend - AI Agent Interface",
+  "main": "index.js",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "nodemon server.js",
-    "client": "cd client && npm start",
+    "dev": "cd client && npm start",
     "build": "cd client && npm run build",
-    "start": "node server.js"
+    "start": "cd client && npm start",
+    "install-client": "cd client && npm install",
+    "deploy": "npm run install-client && npm run build"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "openai": "^4.20.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io-client": "^4.7.2",
     "axios": "^1.6.0",
-    "uuid": "^9.0.1"
+    "lucide-react": "^0.263.1",
+    "react-markdown": "^8.0.7",
+    "moment": "^2.29.4"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "concurrently": "^8.2.2"
+    "react-scripts": "5.0.1"
   },
-  "keywords": ["chat", "ai", "agent", "socket.io", "react"],
+  "keywords": ["chat", "ai", "agent", "react", "frontend"],
   "author": "FMAA Implementation",
   "license": "MIT"
 }

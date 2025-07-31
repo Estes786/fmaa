@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
-import { Send, Bot, User, Settings, RotateCcw, Activity } from 'lucide-react';
+import { Send, Bot, User, Settings, RotateCcw, Activity, Wifi, WifiOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import moment from 'moment';
 import './App.css';
@@ -14,6 +14,12 @@ const App = () => {
   const [currentModel, setCurrentModel] = useState('gpt-4o-mini');
   const [streamingMessage, setStreamingMessage] = useState('');
   const [streamingId, setStreamingId] = useState(null);
+  const [serverUrl, setServerUrl] = useState(
+    process.env.REACT_APP_SERVER_URL || 
+    'https://fmaa-backend.onrender.com' || 
+    'http://localhost:5000'
+  );
+  const [showSettings, setShowSettings] = useState(false);
   
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -25,71 +31,93 @@ const App = () => {
     { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
   ];
 
+  // Demo mode - if no backend available
+  const [demoMode, setDemoMode] = useState(false);
+
   useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(process.env.REACT_APP_SERVER_URL || 'http://localhost:5000', {
-      withCredentials: true
-    });
+    connectToServer();
+  }, [serverUrl]);
 
-    setSocket(newSocket);
+  const connectToServer = () => {
+    try {
+      // Initialize socket connection
+      const newSocket = io(serverUrl, {
+        withCredentials: true,
+        timeout: 5000
+      });
 
-    // Connection event handlers
-    newSocket.on('connect', () => {
-      console.log('🔗 Connected to FMAA server');
-      setIsConnected(true);
-      addSystemMessage('Connected to FMAA Assistant! How can I help you today?');
-    });
+      setSocket(newSocket);
 
-    newSocket.on('disconnect', () => {
-      console.log('🔌 Disconnected from server');
-      setIsConnected(false);
-      addSystemMessage('Disconnected from server. Attempting to reconnect...');
-    });
+      // Connection event handlers
+      newSocket.on('connect', () => {
+        console.log('🔗 Connected to FMAA server');
+        setIsConnected(true);
+        setDemoMode(false);
+        addSystemMessage('Connected to FMAA Assistant! How can I help you today?');
+      });
 
-    // Message event handlers
-    newSocket.on('message_received', (message) => {
-      addMessage(message);
-    });
+      newSocket.on('disconnect', () => {
+        console.log('🔌 Disconnected from server');
+        setIsConnected(false);
+        addSystemMessage('Disconnected from server. Attempting to reconnect...');
+      });
 
-    newSocket.on('message_start', (data) => {
-      setStreamingId(data.id);
-      setStreamingMessage('');
-      setIsTyping(true);
-    });
+      newSocket.on('connect_error', (error) => {
+        console.log('❌ Connection failed:', error);
+        setIsConnected(false);
+        setDemoMode(true);
+        addSystemMessage('Backend server not available. Running in demo mode - responses will be simulated.', 'warning');
+      });
 
-    newSocket.on('message_chunk', (data) => {
-      setStreamingMessage(data.fullText);
-    });
+      // Message event handlers
+      newSocket.on('message_received', (message) => {
+        addMessage(message);
+      });
 
-    newSocket.on('message_complete', (message) => {
-      addMessage(message);
-      setStreamingMessage('');
-      setStreamingId(null);
-      setIsTyping(false);
-    });
+      newSocket.on('message_start', (data) => {
+        setStreamingId(data.id);
+        setStreamingMessage('');
+        setIsTyping(true);
+      });
 
-    newSocket.on('agent_typing', (data) => {
-      setIsTyping(data.isTyping);
-    });
+      newSocket.on('message_chunk', (data) => {
+        setStreamingMessage(data.fullText);
+      });
 
-    newSocket.on('message_error', (error) => {
-      addSystemMessage(`Error: ${error.error}`, 'error');
-      setIsTyping(false);
-    });
+      newSocket.on('message_complete', (message) => {
+        addMessage(message);
+        setStreamingMessage('');
+        setStreamingId(null);
+        setIsTyping(false);
+      });
 
-    newSocket.on('model_switched', (data) => {
-      addSystemMessage(`Switched to model: ${data.model}`);
-    });
+      newSocket.on('agent_typing', (data) => {
+        setIsTyping(data.isTyping);
+      });
 
-    newSocket.on('conversation_reset', () => {
-      setMessages([]);
-      addSystemMessage('Conversation reset. Let\'s start fresh!');
-    });
+      newSocket.on('message_error', (error) => {
+        addSystemMessage(`Error: ${error.error}`, 'error');
+        setIsTyping(false);
+      });
 
-    return () => {
-      newSocket.close();
-    };
-  }, []);
+      newSocket.on('model_switched', (data) => {
+        addSystemMessage(`Switched to model: ${data.model}`);
+      });
+
+      newSocket.on('conversation_reset', () => {
+        setMessages([]);
+        addSystemMessage('Conversation reset. Let\'s start fresh!');
+      });
+
+      return () => {
+        newSocket.close();
+      };
+    } catch (error) {
+      console.error('Failed to connect:', error);
+      setDemoMode(true);
+      addSystemMessage('Running in demo mode. Set up a backend server for full functionality.', 'warning');
+    }
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -115,16 +143,56 @@ const App = () => {
   };
 
   const sendMessage = () => {
-    if (!inputMessage.trim() || !socket || !isConnected) return;
+    if (!inputMessage.trim()) return;
 
     const message = inputMessage.trim();
     setInputMessage('');
 
-    // Send message to server
-    socket.emit('send_message', {
-      message,
+    // Add user message immediately
+    const userMessage = {
+      id: Date.now().toString(),
+      text: message,
+      sender: 'user',
       timestamp: Date.now()
-    });
+    };
+    addMessage(userMessage);
+
+    if (socket && isConnected) {
+      // Send message to server
+      socket.emit('send_message', {
+        message,
+        timestamp: Date.now()
+      });
+    } else if (demoMode) {
+      // Demo mode - simulate response
+      simulateDemoResponse(message);
+    }
+  };
+
+  const simulateDemoResponse = (userMessage) => {
+    setIsTyping(true);
+    
+    setTimeout(() => {
+      const demoResponses = [
+        "Hello! I'm FMAA Assistant running in demo mode. To get full AI responses, please connect a backend server with OpenAI API.",
+        "This is a simulated response. The frontend is working perfectly! Set up the backend server (server.js) to get real AI conversations.",
+        "Demo mode active! ✨ This proves the chat interface is fully functional. Connect to a real AI backend for intelligent responses.",
+        `You said: "${userMessage}". In demo mode, I can only provide pre-set responses. Deploy the backend server for dynamic AI conversations!`,
+        "🤖 FMAA Chat Frontend is working great! The UI, real-time messaging, and all features are ready. Just need the AI backend to complete the experience."
+      ];
+      
+      const randomResponse = demoResponses[Math.floor(Math.random() * demoResponses.length)];
+      
+      const agentMessage = {
+        id: (Date.now() + 1).toString(),
+        text: randomResponse,
+        sender: 'agent',
+        timestamp: Date.now()
+      };
+      
+      addMessage(agentMessage);
+      setIsTyping(false);
+    }, 1500);
   };
 
   const handleKeyPress = (e) => {
@@ -138,12 +206,18 @@ const App = () => {
     if (socket && isConnected) {
       socket.emit('switch_model', { model });
       setCurrentModel(model);
+    } else {
+      setCurrentModel(model);
+      addSystemMessage(`Model set to: ${model} (will apply when backend connects)`);
     }
   };
 
   const resetConversation = () => {
     if (socket && isConnected) {
       socket.emit('reset_conversation');
+    } else {
+      setMessages([]);
+      addSystemMessage('Conversation reset in demo mode.');
     }
   };
 
@@ -212,9 +286,9 @@ const App = () => {
       <header className="app-header">
         <div className="header-left">
           <h1>🤖 FMAA Chat</h1>
-          <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
+          <div className={`connection-status ${isConnected ? 'connected' : demoMode ? 'demo' : 'disconnected'}`}>
             <div className="status-dot"></div>
-            {isConnected ? 'Connected' : 'Disconnected'}
+            {isConnected ? 'Connected' : demoMode ? 'Demo Mode' : 'Disconnected'}
           </div>
         </div>
         
@@ -223,7 +297,6 @@ const App = () => {
             value={currentModel} 
             onChange={(e) => switchModel(e.target.value)}
             className="model-selector"
-            disabled={!isConnected}
           >
             {models.map(model => (
               <option key={model.id} value={model.id}>{model.name}</option>
@@ -231,9 +304,16 @@ const App = () => {
           </select>
           
           <button 
+            onClick={() => setShowSettings(!showSettings)}
+            className="control-btn"
+            title="Settings"
+          >
+            <Settings size={18} />
+          </button>
+          
+          <button 
             onClick={resetConversation}
             className="control-btn"
-            disabled={!isConnected}
             title="Reset Conversation"
           >
             <RotateCcw size={18} />
@@ -241,8 +321,52 @@ const App = () => {
         </div>
       </header>
 
+      {showSettings && (
+        <div className="settings-panel">
+          <h3>🔧 Server Settings</h3>
+          <input
+            type="text"
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            placeholder="Backend Server URL"
+            className="server-input"
+          />
+          <button 
+            onClick={connectToServer}
+            className="connect-btn"
+          >
+            Reconnect
+          </button>
+          <p className="settings-info">
+            💡 Default: For full AI functionality, deploy the backend server (server.js) and enter the URL above.
+          </p>
+        </div>
+      )}
+
       <main className="chat-container">
         <div className="messages-area">
+          {messages.length === 0 && (
+            <div className="welcome-message">
+              <h2>👋 Welcome to FMAA Chat!</h2>
+              <p>
+                {isConnected 
+                  ? "Start chatting with the AI agent below!" 
+                  : demoMode 
+                  ? "Demo mode active - UI is fully functional! Deploy backend for AI responses."
+                  : "Connecting to server..."
+                }
+              </p>
+              <div className="demo-commands">
+                <h4>🧪 Try these examples:</h4>
+                <div className="command-list">
+                  <span>"Hello, how are you?"</span>
+                  <span>"Write a poem about coding"</span>
+                  <span>"Explain quantum computing"</span>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
@@ -270,14 +394,19 @@ const App = () => {
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder={isConnected ? "Type your message..." : "Connecting..."}
-              disabled={!isConnected}
+              placeholder={
+                isConnected 
+                  ? "Type your message..." 
+                  : demoMode 
+                  ? "Try the demo - type anything!"
+                  : "Connecting..."
+              }
               rows={1}
               className="message-input"
             />
             <button 
               onClick={sendMessage}
-              disabled={!isConnected || !inputMessage.trim()}
+              disabled={!inputMessage.trim()}
               className="send-btn"
             >
               <Send size={20} />
