@@ -1,8 +1,8 @@
 // api/agent-factory.js
-const handleCors = require('../lib/cors');
-const supabase = require('../lib/supabase');
+import { handleCors } from '../lib/cors.js';
+import { supabase } from '../lib/supabase.js';
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   // Handle CORS
   if (handleCors(req, res)) return;
 
@@ -99,23 +99,25 @@ module.exports = async (req, res) => {
 
       const { data, error } = await supabase
         .from('agents')
-        .insert([agentData])
-        .select();
+        .insert(agentData)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      // Initialize agent tasks table entry
-      await initializeAgentTasks(data[0].id);
+      // Initialize agent tasks
+      await initializeAgentTasks(data.id);
 
       return res.status(201).json({
         status: 'success',
-        message: 'Agent created successfully',
-        data: data[0]
+        data,
+        message: 'Agent created successfully'
       });
     }
     else if (req.method === 'PUT') {
       // Update agent
-      const { id, name, status, config, description } = req.body;
+      const { id } = req.query;
+      const updateData = req.body;
 
       if (!id) {
         return res.status(400).json({
@@ -124,77 +126,41 @@ module.exports = async (req, res) => {
         });
       }
 
-      // Validate status if provided
-      if (status) {
-        const validStatuses = ['created', 'active', 'inactive', 'error', 'maintenance'];
-        if (!validStatuses.includes(status)) {
-          return res.status(400).json({
-            status: 'error',
-            message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
-          });
-        }
-      }
-
-      // Build update object
-      const updateData = {
-        updated_at: new Date().toISOString()
-      };
-
-      if (name) updateData.name = name;
-      if (status) updateData.status = status;
-      if (config) updateData.config = config;
-      if (description) updateData.description = description;
-
       const { data, error } = await supabase
         .from('agents')
-        .update(updateData)
-        .eq('id', id)
-        .select();
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Agent not found'
-        });
-      }
-
-      return res.status(200).json({
-        status: 'success',
-        message: 'Agent updated successfully',
-        data: data[0]
-      });
-    }
-    else if (req.method === 'DELETE') {
-      // Delete agent (soft delete)
-      const { id } = req.body;
-
-      if (!id) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Agent ID is required'
-        });
-      }
-
-      // Soft delete by setting status to 'deleted'
-      const { data, error } = await supabase
-        .from('agents')
-        .update({ 
-          status: 'deleted',
+        .update({
+          ...updateData,
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
-        .select();
+        .select()
+        .single();
 
       if (error) throw error;
 
-      if (!data || data.length === 0) {
-        return res.status(404).json({
+      return res.status(200).json({
+        status: 'success',
+        data,
+        message: 'Agent updated successfully'
+      });
+    }
+    else if (req.method === 'DELETE') {
+      // Delete agent
+      const { id } = req.query;
+
+      if (!id) {
+        return res.status(400).json({
           status: 'error',
-          message: 'Agent not found'
+          message: 'Agent ID is required'
         });
       }
+
+      const { error } = await supabase
+        .from('agents')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
 
       return res.status(200).json({
         status: 'success',
@@ -204,141 +170,165 @@ module.exports = async (req, res) => {
     else {
       return res.status(405).json({
         status: 'error',
-        message: 'Method not allowed. Use GET, POST, PUT, or DELETE'
+        message: 'Method not allowed'
       });
     }
   } catch (error) {
     console.error('Agent Factory Error:', error);
-
     return res.status(500).json({
       status: 'error',
-      message: error.message || 'An error occurred processing your request',
-      error_code: 'AGENT_FACTORY_ERROR'
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// Get default configuration based on agent type
+// Helper functions
 function getDefaultConfig(type) {
-  const defaultConfigs = {
+  const configs = {
     sentiment: {
-      max_concurrent_tasks: 5,
-      timeout_ms: 30000,
-      confidence_threshold: 0.6,
+      model: 'gpt-4',
+      temperature: 0.7,
+      max_tokens: 1000,
+      analysis_type: 'sentiment',
       language: 'en'
     },
     recommendation: {
-      max_concurrent_tasks: 10,
-      timeout_ms: 45000,
-      max_recommendations: 20,
-      categories: ['technology', 'fashion', 'food', 'entertainment']
+      model: 'gpt-4',
+      temperature: 0.8,
+      max_tokens: 1500,
+      recommendation_type: 'product',
+      personalization: true
     },
     performance: {
-      max_concurrent_tasks: 15,
-      timeout_ms: 15000,
-      alert_thresholds: {
-        response_time: 3000,
-        cpu_usage: 90,
-        memory_usage: 95
-      },
-      aggregation_interval: 300000 // 5 minutes
+      model: 'gpt-4',
+      temperature: 0.6,
+      max_tokens: 2000,
+      metrics: ['accuracy', 'speed', 'efficiency'],
+      monitoring: true
     },
     custom: {
-      max_concurrent_tasks: 5,
-      timeout_ms: 30000
+      model: 'gpt-4',
+      temperature: 0.7,
+      max_tokens: 1000,
+      custom_prompt: '',
+      custom_parameters: {}
     }
   };
 
-  return defaultConfigs[type] || defaultConfigs.custom;
+  return configs[type] || configs.custom;
 }
 
-// Initialize agent tasks tracking
 async function initializeAgentTasks(agentId) {
-  try {
-    await supabase
-      .from('agent_tasks')
-      .insert([{
-        agent_id: agentId,
-        tasks_completed: 0,
-        tasks_failed: 0,
-        average_response_time: 0,
-        last_activity: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      }]);
-  } catch (error) {
+  // Initialize default tasks for the agent
+  const defaultTasks = [
+    {
+      agent_id: agentId,
+      name: 'Initial Setup',
+      type: 'setup',
+      status: 'pending',
+      priority: 'high'
+    }
+  ];
+
+  const { error } = await supabase
+    .from('agent_tasks')
+    .insert(defaultTasks);
+
+  if (error) {
     console.error('Error initializing agent tasks:', error);
   }
 }
 
-// Get agent statistics
 async function getAgentStats(agentId) {
   try {
-    const { data, error } = await supabase
+    // Get task statistics
+    const { data: tasks, error: tasksError } = await supabase
       .from('agent_tasks')
       .select('*')
-      .eq('agent_id', agentId)
-      .single();
+      .eq('agent_id', agentId);
 
-    if (error) {
-      console.error('Error fetching agent stats:', error);
-      return null;
-    }
+    if (tasksError) throw tasksError;
+
+    // Get performance metrics
+    const { data: metrics, error: metricsError } = await supabase
+      .from('agent_metrics')
+      .select('*')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (metricsError) throw metricsError;
 
     return {
-      tasks_completed: data.tasks_completed || 0,
-      tasks_failed: data.tasks_failed || 0,
-      success_rate: data.tasks_completed > 0 
-        ? ((data.tasks_completed / (data.tasks_completed + data.tasks_failed)) * 100).toFixed(1)
-        : 0,
-      average_response_time: data.average_response_time || 0,
-      last_activity: data.last_activity,
-      uptime_percentage: calculateUptime(data.created_at, data.last_activity)
+      total_tasks: tasks ? tasks.length : 0,
+      completed_tasks: tasks ? tasks.filter(t => t.status === 'completed').length : 0,
+      pending_tasks: tasks ? tasks.filter(t => t.status === 'pending').length : 0,
+      recent_metrics: metrics || [],
+      uptime: calculateUptime(new Date(), new Date()), // Simplified for now
+      success_rate: tasks && tasks.length > 0 
+        ? (tasks.filter(t => t.status === 'completed').length / tasks.length * 100).toFixed(2)
+        : 0
     };
   } catch (error) {
-    console.error('Error in getAgentStats:', error);
-    return null;
+    console.error('Error getting agent stats:', error);
+    return {
+      total_tasks: 0,
+      completed_tasks: 0,
+      pending_tasks: 0,
+      recent_metrics: [],
+      uptime: 0,
+      success_rate: 0
+    };
   }
 }
 
-// Calculate agent uptime percentage
 function calculateUptime(createdAt, lastActivity) {
-  if (!createdAt || !lastActivity) return 0;
-
   const now = new Date();
-  const created = new Date(createdAt);
-  const lastActive = new Date(lastActivity);
-
-  const totalTime = now - created;
-  const activeTime = lastActive - created;
-
-  if (totalTime <= 0) return 0;
-
-  return Math.min(100, (activeTime / totalTime) * 100).toFixed(1);
+  const last = lastActivity || createdAt;
+  const totalTime = now - createdAt;
+  const activeTime = now - last;
+  
+  return totalTime > 0 ? ((activeTime / totalTime) * 100).toFixed(2) : 0;
 }
 
-// Calculate summary statistics for agents
 function calculateAgentSummary(agents) {
   if (!agents || agents.length === 0) {
     return {
-      total_agents: 0,
-      active_agents: 0,
-      inactive_agents: 0,
-      types: {}
+      total: 0,
+      by_type: {},
+      by_status: {},
+      average_success_rate: 0
     };
   }
 
   const summary = {
-    total_agents: agents.length,
-    active_agents: agents.filter(a => a.status === 'active').length,
-    inactive_agents: agents.filter(a => a.status === 'inactive').length,
-    error_agents: agents.filter(a => a.status === 'error').length,
-    types: {}
+    total: agents.length,
+    by_type: {},
+    by_status: {},
+    average_success_rate: 0
   };
 
-  // Count by type
+  let totalSuccessRate = 0;
+  let agentsWithStats = 0;
+
   agents.forEach(agent => {
-    summary.types[agent.type] = (summary.types[agent.type] || 0) + 1;
+    // Count by type
+    summary.by_type[agent.type] = (summary.by_type[agent.type] || 0) + 1;
+    
+    // Count by status
+    summary.by_status[agent.status] = (summary.by_status[agent.status] || 0) + 1;
+    
+    // Calculate average success rate
+    if (agent.stats && agent.stats.success_rate) {
+      totalSuccessRate += parseFloat(agent.stats.success_rate);
+      agentsWithStats++;
+    }
   });
+
+  summary.average_success_rate = agentsWithStats > 0 
+    ? (totalSuccessRate / agentsWithStats).toFixed(2)
+    : 0;
 
   return summary;
 }
