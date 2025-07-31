@@ -1,266 +1,99 @@
-# FMAA - Federated Micro-Agents Architecture
+# FMAA Dashboard - Federated Micro-Agents Architecture
 
-🚀 **Sistem Dashboard Analitik dengan Arsitektur Micro-Agents untuk Vercel**
+A comprehensive dashboard for managing and monitoring federated micro-agents with real-time analytics, performance monitoring, and intelligent recommendations.
 
-## Overview
+## 🚀 **Latest Update: Vercel Deployment Fixed**
 
-FMAA adalah sistem dashboard analitik modern yang menggunakan arsitektur micro-agents untuk memberikan layanan analitik yang scalable dan intelligent. Sistem ini dirancang khusus untuk deployment di Vercel dengan integrasi Supabase dan Hugging Face.
+✅ **All Vercel deployment issues have been resolved:**
+- ES Modules conversion completed
+- Dependencies added (@supabase/supabase-js, dotenv)
+- vercel.json optimized
+- Build process verified
 
-## ✨ Fitur Utama
+**Status:** Ready for production deployment! 🎉
 
-- **🤖 Intelligent Agents**: Sentiment Analysis, Recommendation Engine, Performance Monitoring
-- **📊 Real-time Dashboard**: Interactive charts dan metrics dengan live updates
-- **🔍 Advanced Analytics**: Comprehensive performance tracking dan business intelligence
-- **🛡️ Security**: CORS protection, input validation, secure API endpoints
-- **📱 Responsive Design**: Mobile-friendly interface dengan modern UI/UX
-- **⚡ High Performance**: Optimized untuk serverless deployment di Vercel
+## Features
 
-## 🏗️ Arsitektur
+- **Agent Management**: Create, monitor, and manage micro-agents
+- **Performance Analytics**: Real-time performance metrics and monitoring
+- **Sentiment Analysis**: AI-powered sentiment analysis for user feedback
+- **Recommendation Engine**: Intelligent recommendations based on user behavior
+- **Real-time Dashboard**: Live updates and interactive visualizations
+- **Responsive Design**: Works seamlessly across all devices
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   Backend API   │    │   Database      │
-│   (React/Vite)  │◄──►│   (Vercel Func) │◄──►│   (Supabase)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  Hugging Face   │
-                    │  AI Integration │
-                    └─────────────────┘
-```
+## Tech Stack
 
-## 🚀 Quick Start
+- **Frontend**: React 19, Vite, TypeScript
+- **UI Components**: Radix UI, Tailwind CSS
+- **Charts**: Recharts
+- **Backend**: Vercel Serverless Functions
+- **Database**: Supabase
+- **Deployment**: Vercel
 
-### Prerequisites
-- Node.js 18+ 
-- pnpm (recommended)
-- Akun Vercel
-- Akun Supabase
-- Akun Hugging Face
+## Quick Start
 
-### Local Development
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-username/fmaa-dashboard.git
+   cd fmaa-dashboard
+   ```
 
-1. **Clone dan Install**
-```bash
-git clone <repository-url>
-cd fmaa-vercel-ready
-pnpm install
-```
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-2. **Setup Environment**
-```bash
-cp .env.example .env.local
-# Edit .env.local dengan credentials Anda
-```
+3. **Setup environment variables**
+   ```bash
+   cp .env.example .env
+   # Add your Supabase credentials
+   ```
 
-3. **Start Development Server**
-```bash
-pnpm run dev
-```
+4. **Run development server**
+   ```bash
+   npm run dev
+   ```
 
-4. **Access Dashboard**
-```
-http://localhost:5173
-```
+5. **Build for production**
+   ```bash
+   npm run build
+   ```
 
-## 📁 Struktur Proyek
+## API Endpoints
 
-```
-fmaa-vercel-ready/
-├── api/                    # Backend API endpoints (Vercel Functions)
-│   ├── agent-factory.js    # Agent management
-│   ├── sentiment-agent.js  # Sentiment analysis
-│   ├── recommendation-agent.js
-│   └── performance-monitor.js
-├── lib/                    # Shared utilities
-│   ├── cors.js            # CORS handling
-│   ├── supabase.js        # Database client
-│   └── utils.js           # Helper functions
-├── src/                    # Frontend React application
-│   ├── components/        # React components
-│   ├── hooks/            # Custom hooks
-│   └── lib/              # Frontend utilities
-├── database/              # Database schema
-├── public/               # Static assets
-├── vercel.json           # Vercel configuration
-├── package.json          # Dependencies
-└── DEPLOYMENT_GUIDE.md   # Deployment instructions
-```
+- `GET /api/agent-factory` - Agent management
+- `GET /api/performance-monitor` - Performance metrics
+- `GET /api/recommendation-agent` - Recommendations
+- `GET /api/sentiment-agent` - Sentiment analysis
 
-## 🔧 Konfigurasi
+## Deployment
 
-### Environment Variables
+### Vercel Deployment (Recommended)
 
-```env
-# Supabase
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+1. **Connect to Vercel**
+   - Import from GitHub
+   - Setup environment variables
+   - Deploy automatically
 
-# Hugging Face
-HUGGINGFACE_API_KEY=your_huggingface_api_key
+2. **Environment Variables**
+   ```
+   SUPABASE_URL=your_supabase_project_url
+   SUPABASE_ANON_KEY=your_supabase_anon_key
+   NODE_ENV=production
+   ```
 
-# Environment
-NODE_ENV=production
-```
+## Contributing
 
-### Vercel Configuration
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-File `vercel.json` sudah dikonfigurasi untuk:
-- Frontend build dengan Vite
-- Backend serverless functions
-- CORS headers
-- Performance optimization
+## License
 
-## 📊 Dashboard Features
-
-### 🏠 Dashboard Utama
-- Real-time system metrics
-- Performance trends
-- Agent status overview
-- Recent activity feed
-
-### 🤖 Agent Management
-- Agent registry dan status
-- Performance monitoring
-- Health checks
-- Task distribution
-
-### 📋 Task Management
-- Task queue monitoring
-- Execution history
-- Priority management
-- Error tracking
-
-### 📈 Analytics & Metrics
-- Performance analytics
-- Success rate tracking
-- Response time monitoring
-- Custom reports
-
-### 📝 Logs & Monitoring
-- System logs
-- Error tracking
-- Real-time monitoring
-- Audit trail
-
-### ⚙️ Settings
-- System configuration
-- Agent settings
-- Performance tuning
-- Integration setup
-
-## 🚀 Deployment
-
-### Vercel Deployment
-
-1. **Push ke GitHub**
-```bash
-git add .
-git commit -m "Initial commit"
-git push origin main
-```
-
-2. **Deploy ke Vercel**
-- Login ke Vercel Dashboard
-- Import GitHub repository
-- Configure environment variables
-- Deploy
-
-3. **Setup Database**
-- Jalankan SQL schema di Supabase
-- Configure RLS policies
-
-Lihat [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) untuk instruksi lengkap.
-
-## 🧪 Testing
-
-### Frontend Testing
-```bash
-pnpm run dev
-# Test di browser: http://localhost:5173
-```
-
-### API Testing
-```bash
-# Test agent factory
-curl http://localhost:5173/api/agent-factory
-
-# Test sentiment analysis
-curl -X POST http://localhost:5173/api/sentiment-agent \
-  -H "Content-Type: application/json" \
-  -d '{"text": "This is amazing!"}'
-```
-
-## 📚 API Documentation
-
-### Agent Factory (`/api/agent-factory`)
-- `GET` - List all agents
-- `POST` - Create new agent
-- `PUT` - Update agent
-- `DELETE` - Remove agent
-
-### Sentiment Agent (`/api/sentiment-agent`)
-- `POST` - Analyze text sentiment
-- Input: `{"text": "string"}`
-- Output: `{"sentiment": "positive|negative|neutral", "confidence": 0.95}`
-
-### Recommendation Agent (`/api/recommendation-agent`)
-- `POST` - Generate recommendations
-- Input: `{"user_data": {}, "context": {}}`
-- Output: `{"recommendations": []}`
-
-### Performance Monitor (`/api/performance-monitor`)
-- `GET` - Get system metrics
-- `POST` - Log performance data
-
-## 🔒 Security
-
-- CORS protection untuk semua API endpoints
-- Input validation dan sanitization
-- Environment variables untuk sensitive data
-- Supabase RLS untuk database security
-- HTTPS enforcement di production
-
-## 🎯 Performance
-
-- Serverless functions dengan cold start optimization
-- Frontend code splitting dan lazy loading
-- Database connection pooling
-- CDN untuk static assets
-- Optimized bundle size
-
-## 🤝 Contributing
-
-1. Fork repository
-2. Create feature branch
-3. Commit changes
-4. Push to branch
-5. Open Pull Request
-
-## 📄 License
-
-MIT License - lihat [LICENSE](LICENSE) untuk detail.
-
-## 🆘 Support
-
-- 📖 [Deployment Guide](./DEPLOYMENT_GUIDE.md)
-- 🐛 [GitHub Issues](https://github.com/your-repo/issues)
-- 📧 Email: support@fmaa.dev
-
-## 🙏 Acknowledgments
-
-- [Vercel](https://vercel.com/) - Deployment platform
-- [Supabase](https://supabase.com/) - Database dan backend
-- [Hugging Face](https://huggingface.co/) - AI/ML models
-- [React](https://react.dev/) - Frontend framework
-- [Vite](https://vitejs.dev/) - Build tool
-- [Tailwind CSS](https://tailwindcss.com/) - CSS framework
+MIT License - see LICENSE file for details.
 
 ---
 
-**Made with ❤️ for modern web applications**
-
-*FMAA - Empowering Analytics with Intelligent Micro-Agents*
+**Built with ❤️ for the FMAA community**
 

@@ -72,7 +72,6 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "regions": ["sin1", "hnd1", "iad1"]
+  }
 }
 
